@@ -2,18 +2,26 @@ const VSHADER_SOURCE = `
   attribute vec4 a_Position;
   attribute vec4 a_Color;
   attribute vec4 a_Normal;
+  uniform mat4 u_ModelMatrix;
   uniform mat4 u_MvpMatrix;
+  uniform mat4 u_NormalMatrix;
   uniform vec3 u_LightColor;
-  uniform vec3 u_LightDirection;
+  // uniform vec3 u_LightDirection;
+  uniform vec3 u_LightPosition;
   uniform vec3 u_AmbientLight;
   varying vec4 v_Color;
   void main() {
     gl_Position = u_MvpMatrix * a_Position;
-
     // 对法向量进行归一化
-    vec3 normal = normalize(vec3(a_Normal));
+    vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));
+
+    // 计算顶点的世界坐标
+    vec4 vertexPosition = u_ModelMatrix * a_Position;
+    // 计算光线方向并归一化
+    vec3 lightDirection = normalize(u_LightPosition - vec3(vertexPosition));
+
     // 计算光线方向和法向量的点积
-    float nDotL = max(dot(u_LightDirection, normal), 0.0);
+    float nDotL = max(dot(lightDirection, normal), 0.0);
     // 计算漫反射光的颜色
     vec3 diffuse = u_LightColor * vec3(a_Color) * nDotL;
     // 计算环境光产生的反射光颜色
@@ -126,14 +134,29 @@ const onLoad = () => {
   if(!u_LightColor) {
     throw new Error(`Failed to get the u_LightColor!`)
   }
-  const u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection')
-  if(!u_LightDirection) {
-    throw new Error(`Failed to get the u_LightDirection!`)
+  // const u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection')
+  // if(!u_LightDirection) {
+  //   throw new Error(`Failed to get the u_LightDirection!`)
+  // }
+
+  const u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+  if(!u_ModelMatrix) {
+    throw new Error(`Failed to get the u_ModelMatrix!`)
+  }
+
+  const u_LightPosition = gl.getUniformLocation(gl.program, 'u_LightPosition');
+  if(!u_LightPosition) {
+    throw new Error(`Failed to get the u_LightPosition!`)
   }
 
   const u_AmbientLight = gl.getUniformLocation(gl.program, 'u_AmbientLight')
   if(!u_AmbientLight) {
     throw new Error(`Failed to get the u_AmbientLight!`)
+  }
+
+  const u_NormalMatrix = gl.getUniformLocation(gl.program, "u_NormalMatrix")
+  if(!u_NormalMatrix) {
+    throw new Error(`Failed to get the u_NormalMatrix`)
   }
 
   // 设置光线颜色
@@ -142,18 +165,32 @@ const onLoad = () => {
   gl.uniform3f(u_AmbientLight, 0.2, 0.2, 0.2);
 
   // 设置光线方向
-  const lightDirection = new Vector3([0.5, 3.0, 4.0]);
-  lightDirection.normalize();
-  gl.uniform3fv(u_LightDirection, lightDirection.elements);
+  // const lightDirection = new Vector3([0.5, 3.0, 4.0]);
+  // lightDirection.normalize();
+  // gl.uniform3fv(u_LightDirection, lightDirection.elements);
 
+  gl.uniform3f(u_LightPosition, 0.0, 3.0, 1.0)
+
+  const modelMatrix = new Matrix4();
   const mvpMatrix = new Matrix4();
+  const normalMatrix = new Matrix4();
+
+  modelMatrix.setTranslate(0, 1, 0);
+  modelMatrix.rotate(180, 0, 0, 1);
+  gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements)
+
   const aspect = canvas.clientWidth / canvas.clientHeight
   mvpMatrix.setPerspective(30, aspect, 1, 100);
   mvpMatrix.lookAt(3,3,7, 0,0,0, 0,1,0);
-  gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.elements)
+  mvpMatrix.multiply(modelMatrix);
+  gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.elements);
+
+  // 逆转置矩阵计算法向量
+  normalMatrix.setInverseOf(modelMatrix);
+  normalMatrix.transpose();
+  gl.uniformMatrix4fv(u_NormalMatrix, false, normalMatrix.elements);
 
   gl.clearColor(0.5, 0.5, 0.5, 1.0);
-
   gl.enable(gl.DEPTH_TEST);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -180,7 +217,7 @@ const onLoad = () => {
   const tick = () => {
     currentAngle = animate(currentAngle);
     draw(currentAngle);
-    requestAnimationFrame(tick)
+    // requestAnimationFrame(tick)
   };
   tick();
 };
